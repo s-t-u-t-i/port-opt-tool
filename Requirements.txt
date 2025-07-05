@@ -1,4 +1,5 @@
 altair==5.5.0
+yfinance==0.2.64
 attrs==25.3.0
 beautifulsoup4==4.13.4
 blinker==1.9.0
