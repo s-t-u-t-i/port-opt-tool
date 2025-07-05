@@ -1,0 +1,9 @@
+streamlit==1.46.1
+pandas==2.3.0
+numpy==2.3.1
+scipy==1.16.0
+plotly==6.2.0
+yfinance==0.2.64
+curl_cffi==0.11.4
+matplotlib==3.10.3
+seaborn==0.13.2
