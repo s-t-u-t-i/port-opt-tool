@@ -1,16 +1,11 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from core.data_utils import (
-    fetch_and_save_data, load_close_prices_from_csv,
-    calculate_log_returns, calculate_descriptive_statistics,
-    compute_cov_corr_matrices, calculate_individual_sharpe_ratios
-)
+from core.data_utils import fetch_and_save_data, load_close_prices_from_csv, calculate_log_returns, calculate_descriptive_statistics,compute_cov_corr_matrices, calculate_individual_sharpe_ratios
+
 from core.simulation import run_monte_carlo_simulation
 from core.mc_optimization import get_mc_optimal_portfolio
-from core.true_optimization import (
-    portfolio_annual_perf, compute_all_true_portfolios
-)
+from core.true_optimization import portfolio_annual_perf, compute_all_true_portfolios
 from core.plotting import plot_log_returns, plot_correlation_heatmap, plot_efficient_frontier, plot_sharpe_ratio_bar_chart, plot_portfolio_weight_comparison, plot_metric_comparison
 import plotly.graph_objects as go
 
