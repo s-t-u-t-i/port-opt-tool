@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from core.data_utils import fetch_and_save_data, load_close_prices_from_csv, calculate_log_returns, calculate_descriptive_statistics,compute_cov_corr_matrices, calculate_individual_sharpe_ratios
-
 from core.simulation import run_monte_carlo_simulation
 from core.mc_optimization import get_mc_optimal_portfolio
 from core.true_optimization import portfolio_annual_perf, compute_all_true_portfolios
@@ -25,29 +24,58 @@ This interactive app helps you analyze portfolio performance using real stock da
 """)
 
 # ----- Sidebar Controls -----
-st.sidebar.header("Settings")
+from datetime import date
+
+# 🎯 Set default values
+DEFAULTS = {
+    'tickers': ['HDFCBANK.NS', 'ITC.NS', 'RELIANCE.NS', 'SUNPHARMA.NS', 'TCS.NS'],
+    'start_date': date(2020, 1, 1),
+    'end_date': date(2024, 12, 31),
+    'risk_free_rate': 0.05,
+    'num_portfolios': 10000,
+    'custom_generated': False,
+    'simulated': False
+}
+
+# ✅ Initialize session_state if not already set
+for key, val in DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = val
+
+# 🔁 Reset function
 def reset_defaults():
-    st.session_state.tickers = ['HDFCBANK.NS', 'ITC.NS', 'RELIANCE.NS', 'SUNPHARMA.NS', 'TCS.NS']
-    st.session_state.start_date = '2020-01-01'
-    st.session_state.end_date = '2024-12-31'
-    st.session_state.risk_free_rate = 0.05
-    st.session_state.num_portfolios = 10000
-    st.session_state.custom_generated = False
-    st.session_state.simulated = False
+    for key, val in DEFAULTS.items():
+        st.session_state[key] = val
+    st.rerun()
 
-if 'tickers' not in st.session_state:
-    reset_defaults()
+# --- SIDEBAR UI ---
+st.sidebar.header("Settings")
 
+# 🔘 Reset Button
 if st.sidebar.button("Reset to Default"):
     reset_defaults()
 
-tickers = st.sidebar.multiselect("Select Tickers", options=['HDFCBANK.NS', 'ITC.NS', 'RELIANCE.NS', 'SUNPHARMA.NS', 'TCS.NS'], default=st.session_state.tickers)
-start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime(st.session_state.start_date))
-end_date = st.sidebar.date_input("End Date", value=pd.to_datetime(st.session_state.end_date))
-risk_free_rate = st.sidebar.number_input("Risk-Free Rate", value=st.session_state.risk_free_rate)
-num_portfolios = st.sidebar.number_input("Number of Portfolios", min_value=1000, max_value=50000, value=st.session_state.num_portfolios, step=1000)
+# 🎛️ Sidebar Inputs
+st.sidebar.multiselect(
+    "Select Tickers",
+    options=DEFAULTS['tickers'],
+    key='tickers'
+)
 
+st.sidebar.date_input("Start Date", key='start_date')
+st.sidebar.date_input("End Date", key='end_date')
+st.sidebar.number_input("Risk-Free Rate", min_value=0.0, max_value=1.0, step=0.01, key='risk_free_rate')
+st.sidebar.number_input("Number of Portfolios", min_value=1000, max_value=50000, step=1000, key='num_portfolios')
+
+# ▶️ Simulation Button
 simulate_button = st.sidebar.button("Run Simulation")
+
+tickers = st.session_state.tickers
+start_date = st.session_state.start_date
+end_date = st.session_state.end_date
+risk_free_rate = st.session_state.risk_free_rate
+num_portfolios = st.session_state.num_portfolios
+
 
 # ----- Load & Process Data -----
 fetch_and_save_data(tickers, start_date, end_date)
