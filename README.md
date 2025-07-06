@@ -68,7 +68,7 @@ After running, visit: http://localhost:8501
 
 1. Select Stocks and Date Range
 
-Use the sidebar to:
+  Use the sidebar to:
 - Choose from the list of available stocks
 - Set a custom start and end date
 - Adjust the number of portfolios to simulate
@@ -76,34 +76,34 @@ Use the sidebar to:
 
 2. Explore Data in the EDA Section
 
-View log returns of selected stocks
+  View log returns of selected stocks
 - Examine descriptive statistics
 - Analyze correlation heatmaps
 - Compare individual Sharpe ratios using interactive charts
 
 3. Run Portfolio Simulation
 
-Click the "Run Simulation" button to:
+  Click the "Run Simulation" button to:
 - Generate thousands of random portfolios
 - Calculate their expected returns, risks, and Sharpe ratios
 - Identify the Monte Carlo optimal portfolio (highest Sharpe)
 
 4. Create a Custom Portfolio
 
-Use sliders to assign weights to each selected stock
+  Use sliders to assign weights to each selected stock
 - Make sure the total weights sum to 1.0
 - Click "Generate Custom Portfolio" to compute and visualize it
 
 5. Analyze Optimized Portfolios
 
-Automatically displays:
+  Automatically displays:
 - Minimum variance portfolio (GMV)
 - Maximum Sharpe ratio portfolio (True Optimal)
 - The efficient frontier
 
 6. Compare Portfolios
 
-Interactive bar charts display:
+  Interactive bar charts display:
 - Weight compositions across MC Optimal, True Optimal, GMV, and Custom
 - Return, Volatility, and Sharpe Ratio comparison
 
