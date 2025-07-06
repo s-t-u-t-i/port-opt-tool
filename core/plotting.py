@@ -1,5 +1,4 @@
-# core/plotting.py
-
+import os
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
@@ -105,6 +104,9 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
         plot_bgcolor='dark grey',
         hovermode='closest'
     )
+
+    # Create output directory if it doesn't exist and save the plot as an interactive HTML file
+    os.makedirs("output", exist_ok=True)
 
     # Save the plot as an interactive HTML file
     fig.write_html("output/efficient_frontier.html")

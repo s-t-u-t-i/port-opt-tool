@@ -1,3 +1,4 @@
+import os
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -16,6 +17,9 @@ def fetch_and_save_data(tickers, start_date, end_date, filename='data/stock_data
     Returns:
     - DataFrame: Raw downloaded data (multi-index columns).
     """
+    # Create data directory if it doesn't exist
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    
     # Create a session impersonating a Chrome browser (to avoid blocking by Yahoo)
     session = requests.Session(impersonate="chrome")
     
