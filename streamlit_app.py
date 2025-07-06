@@ -46,6 +46,17 @@ for key, val in DEFAULTS.items():
 def reset_defaults():
     for key, val in DEFAULTS.items():
         st.session_state[key] = val
+    # Clear simulation state when resetting
+    if "portfolios_df" in st.session_state:
+        del st.session_state.portfolios_df
+    if "mc_result" in st.session_state:
+        del st.session_state.mc_result
+    if "simulation_tickers" in st.session_state:
+        del st.session_state.simulation_tickers
+    if "custom_result" in st.session_state:
+        del st.session_state.custom_result
+    st.session_state.simulated = False
+    st.session_state.custom_generated = False
     st.rerun()
 
 # --- SIDEBAR UI ---
@@ -55,7 +66,20 @@ st.sidebar.header("Settings")
 if st.sidebar.button("Reset to Default"):
     reset_defaults()
 
-# 🎛️ Sidebar Inputs
+# 🎛 Sidebar Inputs
+# Check if tickers have changed and clear simulation state if needed
+if "simulation_tickers" in st.session_state and st.session_state.get("tickers") != st.session_state.simulation_tickers:
+    # Clear simulation state when tickers change
+    if "portfolios_df" in st.session_state:
+        del st.session_state.portfolios_df
+    if "mc_result" in st.session_state:
+        del st.session_state.mc_result
+    if "custom_result" in st.session_state:
+        del st.session_state.custom_result
+    del st.session_state.simulation_tickers
+    st.session_state.simulated = False
+    st.session_state.custom_generated = False
+
 st.sidebar.multiselect(
     "Select Tickers",
     options=DEFAULTS['tickers'],
@@ -67,7 +91,7 @@ st.sidebar.date_input("End Date", key='end_date')
 st.sidebar.number_input("Risk-Free Rate", min_value=0.0, max_value=1.0, step=0.01, key='risk_free_rate')
 st.sidebar.number_input("Number of Portfolios", min_value=1000, max_value=50000, step=1000, key='num_portfolios')
 
-# ▶️ Simulation Button
+# ▶ Simulation Button
 simulate_button = st.sidebar.button("Run Simulation")
 
 tickers = st.session_state.tickers
@@ -99,7 +123,7 @@ with st.expander("Show Log Returns Chart"):
 
 st.subheader("2. Descriptive Statistics")
 with st.expander("Show Descriptive Statistics"):
-    st.markdown("**Summary of log returns for selected stocks:**")
+    st.markdown("*Summary of log returns for selected stocks:*")
     st.dataframe(summary_df.style.format("{:.4f}"))
 
 st.subheader("3. Correlation Heatmap")
@@ -134,6 +158,8 @@ if st.session_state.get("simulated", False):
         st.session_state.portfolios_df = portfolios_df
         mc_ret, mc_vol, mc_sharpe, mc_weights = get_mc_optimal_portfolio(portfolios_df)
         st.session_state.mc_result = (mc_ret, mc_vol, mc_sharpe, mc_weights)
+        # Store the tickers used for simulation
+        st.session_state.simulation_tickers = tickers.copy()
     else:
         portfolios_df = st.session_state.portfolios_df
         mc_ret, mc_vol, mc_sharpe, mc_weights = st.session_state.mc_result
@@ -144,7 +170,7 @@ else:
 #  Step 3: Custom Portfolio UI
 if not st.session_state.get("simulated", False):
     st.subheader("Custom Portfolio")
-    st.warning("⚠️ Please press the 'Run Simulation' button before generating a custom portfolio.")
+    st.warning("⚠ Please press the 'Run Simulation' button before generating a custom portfolio.")
 else:
     # Required values for optimization
     st.subheader("Custom Portfolio")
@@ -176,65 +202,81 @@ else:
             st.success("✅ Custom portfolio successfully generated!")
 
         st.markdown(f"""
-        **Custom Portfolio Metrics:**
+        *Custom Portfolio Metrics:*
 
-        -  **Expected Return:** {custom_ret:.2%}  
-        -  **Risk (Volatility):** {custom_vol:.2%}  
-        -  **Sharpe Ratio:** {custom_sharpe:.2f}
+        -  *Expected Return:* {custom_ret:.2%}  
+        -  *Risk (Volatility):* {custom_vol:.2%}  
+        -  *Sharpe Ratio:* {custom_sharpe:.2f}
         """)
 
 # --- Efficient Frontier Plot ----
 st.subheader("Efficient Frontier")
 
-if not st.session_state.get("custom_generated", False):
-    st.warning("⚠️ Please generate the custom portfolio first.")
+if not st.session_state.get("simulated", False):
+    st.warning("⚠ Please run the simulation first to view the efficient frontier.")
+elif not st.session_state.get("custom_generated", False):
+    st.warning("⚠ Please generate the custom portfolio first.")
 else:
-    fig = plot_efficient_frontier(
-        portfolios_df=st.session_state.portfolios_df,
-        frontier_vols=frontier_df["Volatility"],
-        target_returns=frontier_df["Return"],
-        mc_opt_vol=mc_vol,
-        mc_opt_return=mc_ret,
-        mc_opt_sharpe=mc_sharpe,
-        opt_volatility=true_vol,
-        opt_return=true_ret,
-        opt_sharpe=true_sharpe,
-        min_vol=min_vol,
-        min_return=min_ret,
-        min_sharpe=min_sharpe,
-        risk_free_rate=risk_free_rate
-    )
+    # Check if current tickers match simulation tickers
+    simulation_tickers = st.session_state.get("simulation_tickers", tickers)
+    if simulation_tickers != tickers:
+        st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
+    else:
+        fig = plot_efficient_frontier(
+            portfolios_df=st.session_state.portfolios_df,
+            frontier_vols=frontier_df["Volatility"],
+            target_returns=frontier_df["Return"],
+            mc_opt_vol=mc_vol,
+            mc_opt_return=mc_ret,
+            mc_opt_sharpe=mc_sharpe,
+            opt_volatility=true_vol,
+            opt_return=true_ret,
+            opt_sharpe=true_sharpe,
+            min_vol=min_vol,
+            min_return=min_ret,
+            min_sharpe=min_sharpe,
+            risk_free_rate=risk_free_rate
+        )
 
-    # Add custom porfolio to the figure 
-    fig.add_trace(go.Scatter(
-        x=[custom_vol],
-        y=[custom_ret],
-        mode='markers',
-        name='Custom Portfolio',
-        marker=dict(color='orange', size=10, symbol='star'),
-        showlegend=True
-    ))
-    st.plotly_chart(fig)
-    st.markdown("*Note: Axes are zoomed in to improve frontier visibility.*")
+        # Add custom porfolio to the figure 
+        fig.add_trace(go.Scatter(
+            x=[custom_vol],
+            y=[custom_ret],
+            mode='markers',
+            name='Custom Portfolio',
+            marker=dict(color='orange', size=10, symbol='star'),
+            showlegend=True
+        ))
+        st.plotly_chart(fig)
+        st.markdown("Note: Axes are zoomed in to improve frontier visibility.")
 
 
 
 # ----- Weight Comparison Chart -----
-if st.session_state.custom_generated:
+if not st.session_state.get("simulated", False):
+    st.warning("⚠ Please run the simulation first to view portfolio weight comparison.")
+elif st.session_state.custom_generated:
     custom_weights = st.session_state.custom_result[-1]
-    portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
-    weights_data = pd.DataFrame(
-        [mc_weights, true_weights, min_weights, custom_weights],
-        columns=tickers,
-        index=portfolios
-    )
+    # Use the tickers that were used for simulation to ensure consistency
+    simulation_tickers = st.session_state.get("simulation_tickers", tickers)
+    
+    # Check if current tickers match simulation tickers
+    if simulation_tickers != tickers:
+        st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
+    else:
+        portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
+        weights_data = pd.DataFrame(
+            [mc_weights, true_weights, min_weights, custom_weights],
+            columns=simulation_tickers,
+            index=portfolios
+        )
 
-    st.subheader("Portfolio Weight Comparison")
+        st.subheader("Portfolio Weight Comparison")
 
-    # Transpose and convert to percentage
-    weights_data = weights_data.T * 100  # index = stock, columns = portfolios
+        # Transpose and convert to percentage
+        weights_data = weights_data.T * 100  # index = stock, columns = portfolios
 
-    st.plotly_chart(plot_portfolio_weight_comparison(weights_data))
+        st.plotly_chart(plot_portfolio_weight_comparison(weights_data))
 
 # Ensure custom metrics are pulled again (in case 'Run Simulation' was clicked after generating custom portfolio)
 if st.session_state.custom_generated:
@@ -246,18 +288,25 @@ else:
 # ----- Performance Metrics Comparison -----
 st.subheader("Portfolio Metrics Comparison")
 
-if not st.session_state.get("custom_generated", False):
-    st.warning("⚠️ Please generate the custom portfolio first to view performance metrics.")
+if not st.session_state.get("simulated", False):
+    st.warning("⚠ Please run the simulation first to view performance metrics.")
+elif not st.session_state.get("custom_generated", False):
+    st.warning("⚠ Please generate the custom portfolio first to view performance metrics.")
 else:
-    portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
-    perf_df = pd.DataFrame({
-        "Portfolio": portfolios,
-        "Return": [mc_ret, true_ret, min_ret, custom_ret],
-        "Volatility": [mc_vol, true_vol, min_vol, custom_vol],
-        "Sharpe Ratio": [mc_sharpe, true_sharpe, min_sharpe, custom_sharpe]
-    })
-    metrics = ["Return", "Volatility", "Sharpe Ratio"]
-    for m in metrics:
-        fig = plot_metric_comparison(perf_df, m)
-        st.plotly_chart(fig)
+    # Check if current tickers match simulation tickers
+    simulation_tickers = st.session_state.get("simulation_tickers", tickers)
+    if simulation_tickers != tickers:
+        st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
+    else:
+        portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
+        perf_df = pd.DataFrame({
+            "Portfolio": portfolios,
+            "Return": [mc_ret, true_ret, min_ret, custom_ret],
+            "Volatility": [mc_vol, true_vol, min_vol, custom_vol],
+            "Sharpe Ratio": [mc_sharpe, true_sharpe, min_sharpe, custom_sharpe]
+        })
+        metrics = ["Return", "Volatility", "Sharpe Ratio"]
+        for m in metrics:
+            fig = plot_metric_comparison(perf_df, m)
+            st.plotly_chart(fig)
 
