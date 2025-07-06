@@ -1,20 +1,3 @@
-# import subprocess
-# import sys
-# # Function to install yfinance if it's missing
-# def install_yfinance():
-#     try:
-#         # Try importing yfinance
-#         import yfinance
-#     except ImportError:
-#         # If not found, install yfinance
-#         print("yfinance not found, installing...")
-#         subprocess.check_call([sys.executable, "-m", "pip", "install", "yfinance"])
-
-# # Install yfinance if necessary
-# install_yfinance()
-
-# # Now import yfinance safely
-# import yfinance as yf
 import yfinance as yf
 import pandas as pd
 import numpy as np

@@ -1,5 +1,3 @@
-# import subprocess
-# import sys
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -91,9 +89,6 @@ with st.expander("Show Sharpe Ratio Chart"):
     sharpe_series = individual_sharpe_ratios 
     fig_sharpe = plot_sharpe_ratio_bar_chart(sharpe_series)
     st.plotly_chart(fig_sharpe)
-
-with st.expander("Show Sharpe Ratio Table"):
-    st.dataframe(sharpe_series.to_frame("Sharpe Ratio").style.format("{:.2f}"))
 
 # ----- Portfolio Optimization Header -----
 st.header("Generate a Custom Portfolio and Compare with Optimized Portfolios")
