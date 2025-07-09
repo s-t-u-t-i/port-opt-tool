@@ -28,7 +28,7 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
     - min_vol (float): Volatility of global minimum variance portfolio.
     - min_return (float): Return of global minimum variance portfolio.
     - min_sharpe (float): Sharpe ratio of global minimum variance portfolio.
-    - risk_free_rate (float): Annual risk-free rate used for CML.
+    - risk_free_rate (float): Annual risk-free rate used for CAL.
     """
     fig = go.Figure()
 
@@ -81,15 +81,15 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
         hovertemplate=f"Return: {min_return:.2%}<br>Volatility: {min_vol:.2%}<br>Sharpe: {min_sharpe:.2f}"
     ))
 
-    # Plot Capital Market Line (CML) using slope = Sharpe ratio
-    cml_x = np.linspace(0, portfolios_df['Volatility'].max(), 100)
-    cml_y = risk_free_rate + opt_sharpe * cml_x
+    # Plot Capital Allocation Line (CAL) using slope = Sharpe ratio
+    cal_x = np.linspace(0, portfolios_df['Volatility'].max(), 100)
+    cal_y = risk_free_rate + opt_sharpe * cal_x
     fig.add_trace(go.Scatter(
-        x=cml_x,
-        y=cml_y,
+        x=cal_x,
+        y=cal_y,
         mode='lines',
         line=dict(color='orange', width=2, dash='dot'),
-        name='Capital Market Line (CML)'
+        name='Capital Allocation Line (CAL)'
     ))
 
     # Set plot layout and styling
