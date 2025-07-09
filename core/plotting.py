@@ -47,7 +47,7 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
         x=frontier_vols,
         y=target_returns,
         mode='lines',
-        line=dict(color='white', width=2),
+        line=dict(color='black', width=2),
         name='Efficient Frontier'
     ))
 
