@@ -78,7 +78,7 @@ After running, visit: http://localhost:8501
    - Set a custom start and end date.
    - Adjust the number of portfolios to simulate.
    - Define the annual risk-free rate.
-   - ![Sidebar Selection](output/Sidebar.png)
+   - ![Sidebar Selection](output/sidebar.png)
 
 2. Explore Data in the EDA Section
   
@@ -95,13 +95,13 @@ After running, visit: http://localhost:8501
    - Generate thousands of random portfolios
    - Calculate their expected returns, risks, and Sharpe ratios
    - Identify the Monte Carlo optimal portfolio (highest Sharpe)
-   - ![run simulation](output/run%20simulation.png)
+   - ![run simulation](output/run_simulation.png)
    - ![](output/run_simulation.gif)
 
   Then Create a Custom Portfolio using sliders to assign weights to each selected stock
    - Make sure the total weights sum to 1.0
    - Click "Generate Custom Portfolio" to compute and observe its metrics
-   - ![Custom portfolio Generation](output/custom%20port%20gen.png)
+   - ![Custom portfolio Generation](output/custom_port_gen.png)
    - ![](output/port_gen.gif)
 
 5. Analyze Optimized Portfolios
