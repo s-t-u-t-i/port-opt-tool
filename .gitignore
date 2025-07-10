@@ -43,7 +43,6 @@ Thumbs.db
 
 # Data files (optional - remove if you want to include sample data)
 data/*.csv
-output/*.png
 output/*.html
 
 # Logs

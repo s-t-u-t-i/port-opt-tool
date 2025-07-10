@@ -113,7 +113,7 @@ After running, visit: http://localhost:8501
    - Monte Carlo Optimal portfolio
    - Custom generated portfolio
    - Capital Allocation Line (CAL)
-   - ![Sample Efficient frontier](output/efficient_frontier.html)
+   - ![Sample Efficient frontier](output/sample_frontier.png)
 
 6. Compare Portfolios
 
