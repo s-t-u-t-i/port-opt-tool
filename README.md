@@ -12,6 +12,11 @@ This app provides an educational and hands-on environment to learn about portfol
 
 This tool combines real-time financial data from Yahoo Finance with quantitative techniques implemented using Python libraries like NumPy, SciPy, Pandas, and Plotly, all wrapped in an interactive Streamlit interface.
 
+## Project Purpose
+The purpose of this project is to help users better understand how portfolio construction works in practice. I wanted to build an interactive tool that allows someone to analyze a set of stocks, simulate possible portfolios, and compare different optimization strategies - like Monte Carlo simulations, minimum variance, sharpe ratio maximization, and even a custom portfolio with user - defined weights.
+
+The idea was to make portfolio theory tangible - by showing how changes in asset allocation affects risk, return and efficiency. It's meant purely for analysis and educational insights, not for real - world investment decisions.
+
 ## How to Install and Run the Project
 
 1. Clone the repository
@@ -69,55 +74,61 @@ After running, visit: http://localhost:8501
 1. Select Stocks and Date Range
 
   Use the sidebar to:
-- Choose from the list of available stocks
-- Set a custom start and end date
-- Adjust the number of portfolios to simulate
-- Define the annual risk-free rate
+   - Choose from the list of 5 available stocks.
+   - Set a custom start and end date.
+   - Adjust the number of portfolios to simulate.
+   - Define the annual risk-free rate.
+   - ![Sidebar Selection](output/Sidebar.png)
 
 2. Explore Data in the EDA Section
+  
+  After stock selection and data range you can:
+   - View log returns of selected stocks
+   - Examine descriptive statistics
+   - Analyze correlation heatmaps
+   - Compare individual Sharpe ratios using interactive charts
+   - ![EDA](output/EDA.gif)
 
-  View log returns of selected stocks
-- Examine descriptive statistics
-- Analyze correlation heatmaps
-- Compare individual Sharpe ratios using interactive charts
-
-3. Run Portfolio Simulation
+3. Run Portfolio Simulation followed by creating a Custom portfolio
 
   Click the "Run Simulation" button to:
-- Generate thousands of random portfolios
-- Calculate their expected returns, risks, and Sharpe ratios
-- Identify the Monte Carlo optimal portfolio (highest Sharpe)
+   - Generate thousands of random portfolios
+   - Calculate their expected returns, risks, and Sharpe ratios
+   - Identify the Monte Carlo optimal portfolio (highest Sharpe)
+   - ![run simulation](output/run%20simulation.png)
+   - ![](output/run_simulation.gif)
 
-4. Create a Custom Portfolio
-
-  Use sliders to assign weights to each selected stock
-- Make sure the total weights sum to 1.0
-- Click "Generate Custom Portfolio" to compute and visualize it
+  Then Create a Custom Portfolio using sliders to assign weights to each selected stock
+   - Make sure the total weights sum to 1.0
+   - Click "Generate Custom Portfolio" to compute and observe its metrics
+   - ![Custom portfolio Generation](output/custom%20port%20gen.png)
+   - ![](output/port_gen.gif)
 
 5. Analyze Optimized Portfolios
 
-  Automatically displays:
-- Minimum variance portfolio (GMV)
-- Maximum Sharpe ratio portfolio (True Optimal)
-- The efficient frontier
+  After generating your custom portfolio you can examine the Efficient frontier to view the following:
+   - Minimum variance portfolio (GMV)
+   - Maximum Sharpe ratio portfolio (True Optimal)
+   - Monte Carlo simulated portfolios
+   - Monte Carlo Optimal portfolio
+   - Custom generated portfolio
+   - Capital Allocation Line (CAL)
+   - ![Sample Efficient frontier](output/efficient_frontier.html)
 
 6. Compare Portfolios
 
-  Interactive bar charts display:
-- Weight compositions across MC Optimal, True Optimal, GMV, and Custom
-- Return, Volatility, and Sharpe Ratio comparison
+  Lastly you can use the iteractive bar charts displayed to compare:
+   - Weight compositions across MC Optimal, True Optimal, GMV, and Custom
+   - Return, Volatility, and Sharpe Ratio comparison for the same.
+   - ![Metrics Comparison](output/metrics_comparison.gif)
 
 **Notes**:
-- The efficient frontier chart is zoomed in for better clarity.
-- Custom portfolio must be generated after running the simulation.
-
-## Demo
-
-Full App walkthrough:
+ - The efficient frontier graph is zoomed in for better visibility of various portfolios.
+ - Custom portfolio must be generated after running the simulation.
 
 ## Credits
 
-This project was developed by [Your Name] as part of a portfolio showcasing quantitative finance, data analysis, and interactive visualization skills using Python and Streamlit.
+This project was developed by Stuti Singh as part of a portfolio showcasing quantitative finance, data analysis, and interactive visualization skills using Python and Streamlit.
 
 Special thanks to:
 - The open-source Python community and contributors of libraries such as:

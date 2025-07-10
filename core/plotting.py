@@ -132,6 +132,7 @@ def plot_log_returns(log_returns: pd.DataFrame):
 
     plt.xlabel("Date")
     plt.tight_layout()
+    plt.savefig("log_returns.png")
     st.pyplot(fig)
 
 
@@ -154,7 +155,7 @@ def plot_correlation_heatmap(corr_matrix, title='Correlation Matrix'):
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt=".2f", ax=ax)
     ax.set_title(title)
     plt.tight_layout()
-
+    plt.savefig("corr_heatmap.png")
     st.pyplot(fig)
 
 def plot_sharpe_ratio_bar_chart(sharpe_series):
