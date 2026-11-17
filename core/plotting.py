@@ -132,7 +132,14 @@ def plot_log_returns(log_returns: pd.DataFrame):
 
     plt.xlabel("Date")
     plt.tight_layout()
-    plt.savefig("output/log_returns.png")
+    # Disk save is best-effort (for README screenshots only); the chart is
+    # shown via st.pyplot below, so never let a transient Windows file lock
+    # (two reruns saving the same path, antivirus, image viewer) crash the app.
+    try:
+        os.makedirs("output", exist_ok=True)
+        plt.savefig("output/log_returns.png")
+    except OSError:
+        pass
     st.pyplot(fig)
 
 
@@ -155,7 +162,12 @@ def plot_correlation_heatmap(corr_matrix, title='Correlation Matrix'):
     sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', center=0, fmt=".2f", ax=ax)
     ax.set_title(title)
     plt.tight_layout()
-    plt.savefig("output/corr_heatmap.png")
+    # Same best-effort disk save as plot_log_returns.
+    try:
+        os.makedirs("output", exist_ok=True)
+        plt.savefig("output/corr_heatmap.png")
+    except OSError:
+        pass
     st.pyplot(fig)
 
 def plot_sharpe_ratio_bar_chart(sharpe_series):
