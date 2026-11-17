@@ -8,6 +8,16 @@ from core.true_optimization import portfolio_annual_perf, compute_all_true_portf
 from core.plotting import plot_log_returns, plot_correlation_heatmap, plot_efficient_frontier, plot_sharpe_ratio_bar_chart, plot_portfolio_weight_comparison, plot_metric_comparison
 import plotly.graph_objects as go
 
+# ----- Cached Data Loader -----
+@st.cache_data(show_spinner="Downloading stock data from Yahoo Finance...")
+def get_stock_data(tickers, start_date, end_date):
+    return fetch_and_save_data(tuple(tickers), start_date, end_date)
+
+# ----- Cached True Portfolio Optimizer -----
+@st.cache_data(show_spinner=False)
+def get_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate):
+    return compute_all_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
+
 st.set_page_config(page_title="Portfolio Optimization Tool", layout="wide")
 
 st.title("Portfolio Optimization & Analysis Tool")
@@ -34,7 +44,8 @@ DEFAULTS = {
     'risk_free_rate': 0.05,
     'num_portfolios': 10000,
     'custom_generated': False,
-    'simulated': False
+    'simulated': False,
+    'simulation_params': None
 }
 
 # ✅ Initialize session_state if not already set
@@ -55,6 +66,8 @@ def reset_defaults():
         del st.session_state.simulation_tickers
     if "custom_result" in st.session_state:
         del st.session_state.custom_result
+    if "simulation_params" in st.session_state:
+        del st.session_state.simulation_params
     st.session_state.simulated = False
     st.session_state.custom_generated = False
     st.rerun()
@@ -65,6 +78,11 @@ st.sidebar.header("Settings")
 # 🔘 Reset Button
 if st.sidebar.button("Reset to Default"):
     reset_defaults()
+
+# 🔄 Refresh Data Button
+if st.sidebar.button("🔄 Refresh Data"):
+    get_stock_data.clear()
+    st.rerun()
 
 # 🎛 Sidebar Inputs
 # Check if tickers have changed and clear simulation state if needed
@@ -77,6 +95,21 @@ if "simulation_tickers" in st.session_state and st.session_state.get("tickers") 
     if "custom_result" in st.session_state:
         del st.session_state.custom_result
     del st.session_state.simulation_tickers
+    st.session_state.simulated = False
+    st.session_state.custom_generated = False
+
+# Check if simulation params (num_portfolios, risk_free_rate) have changed
+curr_params = (st.session_state.num_portfolios, st.session_state.risk_free_rate)
+prev_params = st.session_state.get("simulation_params")
+if prev_params is not None and prev_params != curr_params and st.session_state.get("simulated", False):
+    if "portfolios_df" in st.session_state:
+        del st.session_state.portfolios_df
+    if "mc_result" in st.session_state:
+        del st.session_state.mc_result
+    if "custom_result" in st.session_state:
+        del st.session_state.custom_result
+    if "simulation_tickers" in st.session_state:
+        del st.session_state.simulation_tickers
     st.session_state.simulated = False
     st.session_state.custom_generated = False
 
@@ -102,7 +135,7 @@ num_portfolios = st.session_state.num_portfolios
 
 
 # ----- Load & Process Data -----
-fetch_and_save_data(tickers, start_date, end_date)
+get_stock_data(tickers, start_date, end_date)
 close_prices = load_close_prices_from_csv('data/stock_data.csv')
 log_returns = calculate_log_returns(close_prices)
 summary_df = calculate_descriptive_statistics(log_returns)
@@ -111,9 +144,6 @@ mean_returns_daily = log_returns.mean()
 
 # ----- Exploratory Data Analysis ------
 st.header("Exploratory Data Analysis (EDA)")
-
-log_returns = calculate_log_returns(close_prices)
-_, corr_matrix = compute_cov_corr_matrices(log_returns)
 
 st.subheader("1. Log Returns")
 
@@ -145,27 +175,28 @@ with st.expander("Show Sharpe Ratio Chart"):
 # ----- Portfolio Optimization Header -----
 st.header("Generate a Custom Portfolio and Compare with Optimized Portfolios")
 
-#  Step 1: If simulation button is clicked, just flag it as done
+#  Step 1: If simulation button is clicked, run simulation
 if simulate_button:
-    st.session_state.simulated = True
-    st.session_state.custom_generated = False
-
-#  Step 2: If simulation has been run before, load or reuse data
-if st.session_state.get("simulated", False):
-    if "portfolios_df" not in st.session_state:
-        # Only run simulation once, then reuse
+    with st.spinner("Running Monte Carlo simulation..."):
         portfolios_df = run_monte_carlo_simulation(log_returns, num_portfolios, risk_free_rate)
         st.session_state.portfolios_df = portfolios_df
         mc_ret, mc_vol, mc_sharpe, mc_weights = get_mc_optimal_portfolio(portfolios_df)
         st.session_state.mc_result = (mc_ret, mc_vol, mc_sharpe, mc_weights)
-        # Store the tickers used for simulation
+        # Store the tickers and params used for simulation
         st.session_state.simulation_tickers = tickers.copy()
-    else:
-        portfolios_df = st.session_state.portfolios_df
-        mc_ret, mc_vol, mc_sharpe, mc_weights = st.session_state.mc_result
+        st.session_state.simulation_params = (num_portfolios, risk_free_rate)
+        st.session_state.simulated = True
+        st.session_state.custom_generated = False
+        st.rerun()
+
+#  Step 2: If simulation has been run before, load or reuse data
+if st.session_state.get("simulated", False) and "mc_result" in st.session_state:
+    portfolios_df = st.session_state.portfolios_df
+    mc_ret, mc_vol, mc_sharpe, mc_weights = st.session_state.mc_result
 else:
     portfolios_df = None
     mc_ret = mc_vol = mc_sharpe = mc_weights = None
+    st.session_state.simulated = False  # Reset if invalid state
 
 #  Step 3: Custom Portfolio UI
 if not st.session_state.get("simulated", False):
@@ -175,7 +206,7 @@ else:
     # Required values for optimization
     st.subheader("Custom Portfolio")
 
-    results = compute_all_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
+    results = get_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
 
     true_ret, true_vol, true_sharpe, true_weights = results["true"]
     min_ret, min_vol, min_sharpe, min_weights = results["min"]
@@ -200,14 +231,14 @@ else:
             st.session_state.custom_result = (custom_ret, custom_vol, custom_sharpe, custom_weights)
             st.session_state.custom_generated = True
             st.success("✅ Custom portfolio successfully generated!")
+            
+            st.markdown(f"""
+            *Custom Portfolio Metrics:*
 
-        st.markdown(f"""
-        *Custom Portfolio Metrics:*
-
-        -  *Expected Return:* {custom_ret:.2%}  
-        -  *Risk (Volatility):* {custom_vol:.2%}  
-        -  *Sharpe Ratio:* {custom_sharpe:.2f}
-        """)
+            -  *Expected Return:* {custom_ret:.2%}  
+            -  *Risk (Volatility):* {custom_vol:.2%}  
+            -  *Sharpe Ratio:* {custom_sharpe:.2f}
+            """)
 
 # --- Efficient Frontier Plot ----
 st.subheader("Efficient Frontier")
@@ -217,38 +248,41 @@ if not st.session_state.get("simulated", False):
 elif not st.session_state.get("custom_generated", False):
     st.warning("⚠ Please generate the custom portfolio first.")
 else:
-    # Check if current tickers match simulation tickers
-    simulation_tickers = st.session_state.get("simulation_tickers", tickers)
-    if simulation_tickers != tickers:
-        st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
-    else:
-        fig = plot_efficient_frontier(
-            portfolios_df=st.session_state.portfolios_df,
-            frontier_vols=frontier_df["Volatility"],
-            target_returns=frontier_df["Return"],
-            mc_opt_vol=mc_vol,
-            mc_opt_return=mc_ret,
-            mc_opt_sharpe=mc_sharpe,
-            opt_volatility=true_vol,
-            opt_return=true_ret,
-            opt_sharpe=true_sharpe,
-            min_vol=min_vol,
-            min_return=min_ret,
-            min_sharpe=min_sharpe,
-            risk_free_rate=risk_free_rate
-        )
+        # Check if current tickers match simulation tickers
+        simulation_tickers = st.session_state.get("simulation_tickers", tickers)
+        if simulation_tickers != tickers:
+            st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
+        else:
+            # Get custom portfolio metrics from session state
+            custom_ret, custom_vol, custom_sharpe, custom_weights = st.session_state.custom_result
+            
+            fig = plot_efficient_frontier(
+                portfolios_df=st.session_state.portfolios_df,
+                frontier_vols=frontier_df["Volatility"],
+                target_returns=frontier_df["Return"],
+                mc_opt_vol=mc_vol,
+                mc_opt_return=mc_ret,
+                mc_opt_sharpe=mc_sharpe,
+                opt_volatility=true_vol,
+                opt_return=true_ret,
+                opt_sharpe=true_sharpe,
+                min_vol=min_vol,
+                min_return=min_ret,
+                min_sharpe=min_sharpe,
+                risk_free_rate=risk_free_rate
+            )
 
-        # Add custom porfolio to the figure 
-        fig.add_trace(go.Scatter(
-            x=[custom_vol],
-            y=[custom_ret],
-            mode='markers',
-            name='Custom Portfolio',
-            marker=dict(color='orange', size=10, symbol='star'),
-            showlegend=True
-        ))
-        st.plotly_chart(fig)
-        st.markdown("Note: Axes are zoomed in to improve frontier visibility.")
+            # Add custom porfolio to the figure 
+            fig.add_trace(go.Scatter(
+                x=[custom_vol],
+                y=[custom_ret],
+                mode='markers',
+                name='Custom Portfolio',
+                marker=dict(color='orange', size=10, symbol='star'),
+                showlegend=True
+            ))
+            st.plotly_chart(fig)
+            st.markdown("Note: Axes are zoomed in to improve frontier visibility.")
 
 
 

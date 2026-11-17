@@ -3,7 +3,7 @@
 import numpy as np
 import pandas as pd
 
-def run_monte_carlo_simulation(log_returns, num_portfolios=10_000, risk_free_rate=0.05, output_csv='data/Monte_Carlo_simulation.csv'):
+def run_monte_carlo_simulation(log_returns, num_portfolios=10_000, risk_free_rate=0.05):
     """
     Runs a Monte Carlo simulation to generate random portfolios and compute
     their expected return, volatility, and Sharpe ratio.
@@ -12,8 +12,6 @@ def run_monte_carlo_simulation(log_returns, num_portfolios=10_000, risk_free_rat
     - log_returns (DataFrame): Daily log returns of assets.
     - num_portfolios (int): Number of random portfolios to simulate.
     - risk_free_rate (float): Annual risk-free rate used in Sharpe ratio.
-    - output_csv (str): File path to optionally save the simulation results.
-
     Returns:
     - DataFrame: Portfolio simulation results with return, volatility, Sharpe ratio,
                  and individual asset weights.

@@ -1,5 +1,5 @@
 # Python
-_pycache_/
+__pycache__/
 *.py[cod]
 *$py.class
 *.so
@@ -44,6 +44,13 @@ Thumbs.db
 # Data files (optional - remove if you want to include sample data)
 data/*.csv
 output/*.html
+
+# Large media files
+EDA.gif
+demo.mp4
+
+# ZCode internal files
+.zcode/
 
 # Logs
 *.log
