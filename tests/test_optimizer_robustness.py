@@ -1,11 +1,14 @@
 """
-Aspect 4 — Optimizer robustness.
+Aspect 4 — Optimizer robustness (fix guards).
 
-Key gap documented here: find_true_optimal_portfolio and
-get_min_variance_portfolio NEVER check result.success
-(core/true_optimization.py:66 and :92), so a failed optimization silently
-returns whatever garbage weights the solver left behind. Only the efficient
-frontier loop checks success (core/true_optimization.py:135).
+Fixed behavior:
+- A failed SLSQP solve now RAISES instead of silently returning garbage
+  weights (core/true_optimization.py, find_true_optimal_portfolio and
+  get_min_variance_portfolio).
+- A broken covariance matrix raises a clear ValueError once, up front
+  (validate_cov_matrix), instead of producing NaN portfolios.
+- The efficient frontier still skips failed targets, and can still come
+  back empty (that part was always checked).
 """
 import numpy as np
 import pandas as pd
@@ -28,9 +31,9 @@ RISK_FREE = 0.05
 # Broken math inputs
 # ---------------------------------------------------------------------------
 def test_non_psd_covariance_produces_nan_vol_silently():
-    """Covariance [[1, 2], [2, 1]] has a negative eigenvalue (-1). A weight
-    vector along that direction gives NEGATIVE portfolio variance, sqrt gives
-    NaN, and NOTHING raises (true_optimization.py:19)."""
+    """portfolio_annual_perf is pure math: a non-PSD covariance (negative
+    eigenvalue) still yields NaN volatility with no raise. The GUARD lives in
+    compute_all_true_portfolios (see next test) — this documents the raw math."""
     bad_cov = pd.DataFrame([[1.0, 2.0], [2.0, 1.0]], index=["X", "Y"], columns=["X", "Y"])
     mean = pd.Series([0.001, 0.0005], index=["X", "Y"])
     with np.errstate(invalid="ignore"):
@@ -38,9 +41,26 @@ def test_non_psd_covariance_produces_nan_vol_silently():
     assert np.isnan(vol)
 
 
+def test_non_psd_covariance_is_rejected_up_front(five_asset_log_returns):
+    """Fixed (was L4): compute_all_true_portfolios rejects a broken covariance
+    matrix with a clear error instead of optimizing on it."""
+    n = five_asset_log_returns.shape[1]
+    bad = pd.DataFrame(
+        np.eye(n) * 0.5, index=five_asset_log_returns.columns,
+        columns=five_asset_log_returns.columns,
+    )
+    bad.iloc[0, 1] = 2.0   # push an eigenvalue negative
+    bad.iloc[1, 0] = 2.0
+    with pytest.raises(ValueError, match="positive semi-definite"):
+        compute_all_true_portfolios(
+            five_asset_log_returns.mean(), bad, RISK_FREE
+        )
+
+
 def test_single_asset_zero_variance_divides_by_zero():
-    """Documented edge: constant prices -> zero variance -> vol 0 -> Sharpe
-    divides by zero. No guard raises anywhere (true_optimization.py:37)."""
+    """Raw-math edge: constant prices -> zero variance -> vol 0 -> Sharpe
+    divides by zero inside the objective. The optimizer entry points reject
+    degenerate covariances before reaching this (see validate_cov_matrix)."""
     mean = pd.Series([0.0], index=["SOLO"])
     cov = pd.DataFrame([[0.0]], index=["SOLO"], columns=["SOLO"])
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -53,7 +73,7 @@ def test_single_asset_zero_variance_divides_by_zero():
 
 
 # ---------------------------------------------------------------------------
-# result.success is never checked (the big one)
+# result.success IS now checked (was C2)
 # ---------------------------------------------------------------------------
 def _failed_result(x):
     return OptimizeResult(
@@ -61,28 +81,27 @@ def _failed_result(x):
     )
 
 
-def test_failed_optimizer_result_flows_through_silently(
-    five_asset_log_returns, monkeypatch
-):
-    """The optimizer is forced to report failure. compute_all_true_portfolios
-    must still complete AND hand back the failed weights as if they were the
-    answer — proving success is never checked."""
-    n = five_asset_log_returns.shape[1]
+def test_failed_optimizer_result_now_raises(five_asset_log_returns, monkeypatch):
+    """Fixed (was C2): a failed SLSQP solve raises a RuntimeError with the
+    solver's message instead of handing back garbage weights as 'optimal'."""
     monkeypatch.setattr(
-        true_opt, "minimize", lambda fun, x0, *a, **k: _failed_result(np.full(len(x0), 1.0 / len(x0)))
+        true_opt,
+        "minimize",
+        lambda fun, x0, *a, **k: _failed_result(np.full(len(x0), 1.0 / len(x0))),
     )
-
-    out = compute_all_true_portfolios(
-        five_asset_log_returns.mean(), five_asset_log_returns.cov(), RISK_FREE
-    )
-    # No exception was raised, and the "optimal" weights are the raw failed guess
-    assert np.allclose(out["true"][3], np.full(n, 0.2))
-    assert np.allclose(out["min"][3], np.full(n, 0.2))
+    with pytest.raises(RuntimeError, match="Sharpe-ratio optimization failed"):
+        find_true_optimal_portfolio(
+            five_asset_log_returns.mean(), five_asset_log_returns.cov(), RISK_FREE
+        )
+    with pytest.raises(RuntimeError, match="Minimum-variance optimization failed"):
+        get_min_variance_portfolio(
+            five_asset_log_returns.mean(), five_asset_log_returns.cov()
+        )
 
 
 def test_real_slsqp_baseline_succeeds_on_good_data(five_asset_log_returns):
-    """Sanity baseline: on healthy inputs SLSQP reports success — so the
-    missing check wouldn't matter if failures were impossible. They are not."""
+    """Sanity baseline: on healthy inputs SLSQP reports success — the raise
+    only fires on genuine failures."""
     res = find_true_optimal_portfolio(
         five_asset_log_returns.mean(), five_asset_log_returns.cov(), RISK_FREE
     )
@@ -95,8 +114,8 @@ def test_real_slsqp_baseline_succeeds_on_good_data(five_asset_log_returns):
 # ---------------------------------------------------------------------------
 def test_frontier_skips_failed_targets(five_asset_log_returns, monkeypatch):
     """compute_efficient_frontier checks result.success and skips failures
-    (true_optimization.py:135) — targets that fail simply vanish from the
-    frontier, creating invisible holes."""
+    — targets that fail vanish from the frontier (creating holes, which the
+    frontier plot renders as gaps rather than wrong data)."""
     real_minimize = true_opt.minimize
     state = {"n": 0}
 
@@ -116,28 +135,31 @@ def test_frontier_skips_failed_targets(five_asset_log_returns, monkeypatch):
 
 
 def test_frontier_can_come_back_completely_empty(five_asset_log_returns, monkeypatch):
-    """If every target fails, the frontier is an EMPTY frame with zero rows —
-    and compute_all_true_portfolios still completes without error, handing the
-    app an empty frontier to plot (true_optimization.py:175 filter keeps it
-    empty)."""
+    """compute_efficient_frontier alone returns an empty frame when every
+    target fails; compute_all_true_portfolios raises (the true/GMV solve runs
+    first and now refuses to report failure as success)."""
     monkeypatch.setattr(
         true_opt,
         "minimize",
         lambda fun, x0, *a, **k: _failed_result(np.full(len(x0), 1.0 / len(x0))),
     )
-    out = compute_all_true_portfolios(
-        five_asset_log_returns.mean(), five_asset_log_returns.cov(), RISK_FREE
+    frontier = compute_efficient_frontier(
+        five_asset_log_returns.mean(), five_asset_log_returns.cov(), num_points=10
     )
-    assert out["frontier"].shape == (0, 2)
+    assert frontier.shape == (0, 2)
+
+    with pytest.raises(RuntimeError):
+        compute_all_true_portfolios(
+            five_asset_log_returns.mean(), five_asset_log_returns.cov(), RISK_FREE
+        )
 
 
 # ---------------------------------------------------------------------------
 # Degenerate asset counts
 # ---------------------------------------------------------------------------
 def test_two_highly_correlated_assets_still_optimize():
-    """Near-singular covariance (corr = 0.999). The optimizer survives, but
-    this is the regime where tiny numerical noise can flip the 'optimal'
-    weights wildly — worth knowing."""
+    """Near-singular covariance (corr = 0.999): the optimizer survives; the
+    up-front PSD validation tolerates valid-but-near-singular matrices."""
     vol = 0.012
     cov_d = np.array([[vol**2, 0.999 * vol**2], [0.999 * vol**2, vol**2]])
     cov = pd.DataFrame(cov_d, index=["A", "B"], columns=["A", "B"])
@@ -152,8 +174,7 @@ def test_two_highly_correlated_assets_still_optimize():
 
 def test_single_asset_optimizer_converges_to_all_in():
     """1 asset: the only valid portfolio is 100% of it. Math works fine here —
-    the 1-ticker crash lives in the PLOTTING layer (see test_resource_leaks /
-    GUI tests), not in the optimizer."""
+    and since the plotting fix, the 1-ticker UI case renders correctly too."""
     mean = pd.Series([0.0005], index=["SOLO"])
     cov = pd.DataFrame([[0.0001]], index=["SOLO"], columns=["SOLO"])
     res = find_true_optimal_portfolio(mean, cov, RISK_FREE)

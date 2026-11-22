@@ -21,12 +21,11 @@ def _clean_figures():
     plt.close("all")
 
 
-def test_matplotlib_figures_accumulate_over_20_reruns(
-    five_asset_log_returns, monkeypatch
+def test_matplotlib_figures_are_closed_after_every_plot(
+    five_asset_log_returns, monkeypatch, isolated_fs
 ):
-    """Documented leak: after 20 simulated reruns, 40 figures (2 per rerun)
-    are still alive. This test PASSES while documenting the bug — the fix
-    (plt.close) is a user decision, out of scope for this pass."""
+    """Fixed (was M4 / gap #20): both matplotlib plotters close their figures,
+    so 20 simulated reruns leave ZERO figures alive in the global heap."""
     import streamlit as st
 
     monkeypatch.setattr(st, "pyplot", lambda *a, **k: None)  # skip rendering
@@ -38,8 +37,15 @@ def test_matplotlib_figures_accumulate_over_20_reruns(
     after = len(plt.get_fignums())
 
     leaked = after - before
-    print(f"\n[leak] figures alive after 20 reruns: {leaked} (0 would mean no leak)")
-    assert leaked == 40  # documents the leak precisely
+    assert leaked == 0
+
+
+def test_single_ticker_plot_now_renders(five_asset_log_returns, isolated_fs):
+    """Fixed (was H1): plotting exactly one ticker works — plt.subplots(1, 1)
+    returns a bare Axes, which is now handled — and the figure is closed."""
+    single = five_asset_log_returns[["AAA.NS"]]
+    plotting.plot_log_returns(single)  # must NOT raise
+    assert plt.get_fignums() == []     # rendered and closed
 
 
 def test_plotly_functions_do_not_touch_matplotlib_heap(mc_portfolios):
@@ -61,15 +67,6 @@ def test_plotly_functions_do_not_touch_matplotlib_heap(mc_portfolios):
 
     assert isinstance(fig1, go.Figure) and isinstance(fig2, go.Figure) and isinstance(fig3, go.Figure)
     assert after == before
-
-
-def test_single_ticker_plot_crashes_with_typeerror(five_asset_log_returns):
-    """Documented bug (plotting.py:125-128): plt.subplots(1, 1) returns a bare
-    Axes object, not a list, so axes[0] raises TypeError. Selecting exactly
-    one ticker in the app crashes the whole page."""
-    single = five_asset_log_returns[["AAA.NS"]]
-    with pytest.raises(TypeError, match="not subscriptable"):
-        plotting.plot_log_returns(single)
 
 
 def test_app_reset_defaults_deletes_all_simulation_keys():

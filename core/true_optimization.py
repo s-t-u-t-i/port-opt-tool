@@ -2,6 +2,35 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
 
+
+def validate_cov_matrix(cov_matrix, tol=1e-10):
+    """
+    Raises a clear error when a covariance matrix cannot be optimized on.
+
+    A broken covariance (negative eigenvalues, asymmetric, wrong shape) used
+    to flow silently into the solver, which produced NaN/garbage 'optimal'
+    portfolios. This check runs ONCE on the input, never inside the optimizer
+    loop, so float noise on near-singular (but valid) matrices can't trip it.
+
+    Parameters:
+    - cov_matrix (DataFrame/array): Daily covariance matrix.
+    - tol (float): Tolerance for the positive semi-definiteness check.
+    """
+    values = np.asarray(cov_matrix, dtype=float)
+    if values.ndim != 2 or values.shape[0] != values.shape[1]:
+        raise ValueError(
+            f"Covariance matrix must be square, got shape {values.shape}."
+        )
+    if not np.allclose(values, values.T, atol=1e-8):
+        raise ValueError("Covariance matrix is not symmetric.")
+    eigvals = np.linalg.eigvalsh((values + values.T) / 2)
+    if eigvals.min() < -tol:
+        raise ValueError(
+            "Covariance matrix is not positive semi-definite (minimum "
+            f"eigenvalue {eigvals.min():.3e}). The price data likely contains "
+            "a degenerate asset (constant or duplicated prices)."
+        )
+
 def portfolio_annual_perf(weights, mean_returns, cov_matrix):
     """
     Calculates the annualized portfolio return and volatility.
@@ -66,6 +95,14 @@ def find_true_optimal_portfolio(mean_returns, cov_matrix, risk_free_rate):
     result = minimize(negative_sharpe_ratio, init_guess, args=args,
                       method='SLSQP', bounds=bounds, constraints=constraints)
 
+    # A failed solve used to silently return whatever garbage weights the
+    # solver left behind. Fail loudly instead.
+    if not result.success:
+        raise RuntimeError(
+            f"Sharpe-ratio optimization failed (scipy status {result.status}): "
+            f"{result.message}"
+        )
+
     return result
 
 
@@ -91,6 +128,14 @@ def get_min_variance_portfolio(mean_returns, cov_matrix):
 
     result = minimize(portfolio_volatility, init_guess, method='SLSQP',
                       bounds=bounds, constraints=constraints)
+
+    # Same guard as find_true_optimal_portfolio: never present a failed solve
+    # as if it were the answer.
+    if not result.success:
+        raise RuntimeError(
+            f"Minimum-variance optimization failed (scipy status "
+            f"{result.status}): {result.message}"
+        )
 
     return result
 
@@ -158,6 +203,10 @@ def compute_all_true_portfolios(mean_returns, cov_matrix, risk_free_rate):
     Returns:
     - dict: Contains true optimal, GMV, and frontier data.
     """
+    # Validate the risk model once, up front, so a broken covariance raises a
+    # clear error instead of flowing into every downstream number.
+    validate_cov_matrix(cov_matrix)
+
     # True Optimal Portfolio
     true_result = find_true_optimal_portfolio(mean_returns, cov_matrix, risk_free_rate)
     true_weights = true_result.x

@@ -63,9 +63,8 @@ def test_pip_check_reports_no_dependency_conflicts():
 
 
 def test_streamlit_config_toml_is_valid():
-    """Parses .streamlit/config.toml and documents the security-relevant
-    settings (enableCORS=false / enableXsrfProtection=false are noted in the
-    bug report — this test only records that the values are what they are)."""
+    """Parses .streamlit/config.toml. Fixed (was M5): the security-hardening
+    flags are back ON (they were both disabled); the test guards them."""
     cfg = tomllib.loads((ROOT / ".streamlit" / "config.toml").read_text(encoding="utf-8"))
 
     theme = cfg["theme"]
@@ -75,18 +74,24 @@ def test_streamlit_config_toml_is_valid():
         int(hexval[1:], 16)  # valid hex
 
     server = cfg["server"]
-    # Recorded for the report: both hardening flags are DISABLED.
-    assert server["enableCORS"] is False
-    assert server["enableXsrfProtection"] is False
+    assert server["enableCORS"] is True
+    assert server["enableXsrfProtection"] is True
 
 
 def test_readme_run_instructions_reference_real_files():
+    """Fixed (was M6): the `cd` target must match the repo name in the clone
+    URL, so the README works verbatim."""
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "streamlit run streamlit_app.py" in readme
     assert (ROOT / "streamlit_app.py").exists()
     assert (ROOT / "requirements.txt").exists()
-    # README documents the browser URL it expects the app on
     assert "http://localhost:8501" in readme
+
+    clone_line = next(line for line in readme.splitlines() if "git clone" in line)
+    repo_name = clone_line.strip().rsplit("/", 1)[-1].removesuffix(".git")
+    assert f"cd {repo_name}" in readme, (
+        f"README says 'cd <something>' that does not match cloned folder {repo_name!r}"
+    )
 
 
 def test_pytest_listed_in_dev_requirements():

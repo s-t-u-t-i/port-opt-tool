@@ -62,7 +62,9 @@ def test_max_portfolios_50000_timing_and_memory(five_asset_log_returns):
 
     assert df.shape == (50_000, 3 + 5)
     print(f"\n[perf] 50,000-portfolio simulation: {elapsed:.2f}s, peak {peak / 1e6:.1f} MB")
-    assert elapsed < 120  # generous ceiling; printed number is the real metric
+    # Fixed (was L7): the simulation is vectorized — 50k portfolios used to
+    # take ~40s in a Python loop; now it must finish in seconds.
+    assert elapsed < 10
 
 
 # ---------------------------------------------------------------------------

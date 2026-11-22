@@ -1,7 +1,12 @@
 [server]
 maxUploadSize = 200
-enableXsrfProtection = false
-enableCORS = false
+# Security hardening (defaults re-enabled; they were disabled previously):
+# - XSRF protection blocks cross-site request forgery against the running app
+# - CORS protection blocks other websites from making requests to it
+# Local single-user use is unaffected; only disable these if you specifically
+# need another site to talk to this app.
+enableXsrfProtection = true
+enableCORS = true
 
 [browser]
 gatherUsageStats = false

@@ -1,7 +1,7 @@
 # Bug Report — Portfolio Optimization Tool
 
-**Date:** 2026-11-22 · **Scope:** report-only, no fixes applied (per test plan)
-**Test evidence:** `tests/` pytest suite (63 tests, all passing) + live GUI session against `streamlit_app.py` (Streamlit 1.62, Python 3.13.7, pandas 3.0.5, numpy 2.5.2).
+**Date:** 2026-11-22 · **Original pass:** report-only audit · **Fix pass:** 2026-11-22 — ALL findings fixed
+**Test evidence:** `tests/` pytest suite (64 tests, all passing) + live GUI session against `streamlit_app.py` (Streamlit 1.62, Python 3.13.7, pandas 3.0.5, numpy 2.5.2).
 
 Severity = impact on a real user of the app, assuming normal use.
 
@@ -17,6 +17,33 @@ Severity = impact on a real user of the app, assuming normal use.
 | ⚪ Low | 7 | Fragile code, cosmetic and hardening issues |
 
 The theme of the Critical/High findings is **silence**: the data pipeline almost never validates what it receives (downloads, tickers, prices), so bad input turns into confidently-displayed garbage instead of an error.
+
+## ✅ Fix status (2026-11-22) — all 20 findings fixed
+
+| ID | Finding | Fix | Fix-guard test |
+|---|---|---|---|
+| C1 | Bogus/delisted ticker wipes all data | Dead tickers dropped with a warning; history truncation announced (`calculate_log_returns`) + app-level warnings | `test_pipeline_edge_cases.py` |
+| C2 | `result.success` never checked | Failed SLSQP solves raise `RuntimeError` (`true_optimization.py`) | `test_optimizer_robustness.py` |
+| H1 | 1-ticker page crash | `np.atleast_1d(axes)` in `plot_log_returns` — GUI-verified renders | `test_resource_leaks.py` |
+| H2 | Failed download destroys good CSV | Empty download raises `ValueError`, file untouched | `test_pipeline_edge_cases.py` |
+| H3 | Empty downloads flow silently | App guards: empty tickers / bad dates / no data → clear `st.error` + stop | GUI-verified |
+| H4 | Stale-CSV race | App works from the cached download, never re-reads disk mid-session | `test_pipeline_edge_cases.py` |
+| H5 | Non-positive prices → ±inf | Masked to missing data + warning | `test_data_utils.py` |
+| M1 | Order-sensitive ticker compare | Set-based checks + canonical (sorted) ticker order + `align_weight_vector` | `test_simulation_mc.py` |
+| M2 | Hardcoded plot axes | Data-driven ranges incl. custom portfolio — GUI-verified visible | GUI screenshot |
+| M3 | Bare filename crash | `os.makedirs` skipped when dirname empty | `test_pipeline_edge_cases.py` |
+| M4 | Figures never closed | `plt.close(fig)` after every matplotlib render — 0 leaks over 20 reruns | `test_resource_leaks.py` |
+| M5 | CORS/XSRF disabled | Both re-enabled in `.streamlit/config.toml` | `test_environment.py` |
+| M6 | README `cd` mismatch | Fixed + "Running the Tests" section added | `test_environment.py` |
+| L1 | Weight section goes silent | Warning added for simulated-but-not-custom state | GUI-verified |
+| L2 | Zero-std Sharpe = ±inf | NaN + warning instead | `test_data_utils.py` |
+| L3 | Positional weight slice | Name-based resolution + optional `weight_columns` param (app passes tickers) | `test_simulation_mc.py` |
+| L4 | Broken covariance silent NaN | `validate_cov_matrix` raises clear `ValueError` up front | `test_optimizer_robustness.py` |
+| L5 | Pipeline reruns every drag | Cached `get_pipeline_outputs` in the app | `test_performance_caching.py` |
+| L6 | Confusing `idxmax` ValueError | Actionable `ValueError` messages in `get_mc_optimal_portfolio` | `test_simulation_mc.py` |
+| L7 | 50k portfolios ~40s | Vectorized Monte Carlo: **39.8s → 0.02s** (identical seeded results) | `test_performance_caching.py` |
+
+Performance after fixes: 64/64 tests green · 50k portfolios 0.02s / 6.8 MB · optimizer 2.7s → 6.8ms cached · per-rerun pipeline now cache-hit instant.
 
 ---
 
@@ -148,6 +175,6 @@ Also verified working in the live GUI:
 | Optimizer uncached → cached | 2,700 ms → 7.6 ms |
 | Full test suite | 63 tests, ~2 min |
 
-## Out of scope (user decisions pending)
+## Fix-pass notes
 
-Per the plan, **no code was changed**: C1, C2, H1, H2/H3/H4/H5, M1, M2, M4 (and their smaller relatives) are documented, not fixed. A sensible fix order if you choose to proceed: C1 (validate downloads + per-ticker dropna policy) → C2 (check `result.success`) → H1 (squeeze axes) → M2 (auto axis ranges) → M4 (`plt.close`) → M1 (set comparison).
+Every finding above was fixed on 2026-11-22. Each bug-documenting test in `tests/` was upgraded into a permanent guard for the fixed behavior, so none of these 20 regressions can silently return. The findings' original write-ups are kept above as documentation of *why* each guard exists.

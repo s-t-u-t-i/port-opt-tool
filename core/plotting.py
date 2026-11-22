@@ -10,10 +10,16 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
                                 mc_opt_vol, mc_opt_return, mc_opt_sharpe,
                                 opt_volatility, opt_return, opt_sharpe,
                                 min_vol, min_return, min_sharpe,
-                                risk_free_rate):
+                                risk_free_rate,
+                                custom_vol=None, custom_return=None):
     """
     Plots the efficient frontier, Monte Carlo portfolios, optimal portfolios,
     and the Capital Market Line using Plotly.
+
+    Axis ranges are computed from the data itself (with a small margin) so
+    every plotted portfolio is visible — the previous hardcoded ranges
+    silently clipped portfolios outside [16%, 30%] volatility / [8%, 30%]
+    return.
 
     Parameters:
     - portfolios_df (DataFrame): Monte Carlo simulation results.
@@ -29,6 +35,9 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
     - min_return (float): Return of global minimum variance portfolio.
     - min_sharpe (float): Sharpe ratio of global minimum variance portfolio.
     - risk_free_rate (float): Annual risk-free rate used for CAL.
+    - custom_vol (float, optional): Volatility of the user's custom portfolio
+      (used so the auto-fit axis range includes it).
+    - custom_return (float, optional): Return of the user's custom portfolio.
     """
     fig = go.Figure()
 
@@ -92,14 +101,34 @@ def plot_efficient_frontier(portfolios_df, frontier_vols, target_returns,
         name='Capital Allocation Line (CAL)'
     ))
 
+    # Auto-fit the axes to every point that will be drawn (Monte Carlo cloud,
+    # frontier line, the three optimal portfolios, and the custom portfolio
+    # when provided), plus a 5% margin so markers aren't cut off at the edges.
+    all_vols = pd.concat([
+        portfolios_df['Volatility'],
+        pd.Series(pd.DataFrame({'v': frontier_vols})['v'], dtype=float),
+        pd.Series([mc_opt_vol, opt_volatility, min_vol], dtype=float),
+    ])
+    all_rets = pd.concat([
+        portfolios_df['Return'],
+        pd.Series(pd.DataFrame({'r': target_returns})['r'], dtype=float),
+        pd.Series([mc_opt_return, opt_return, min_return], dtype=float),
+    ])
+    if custom_vol is not None and custom_return is not None:
+        all_vols = pd.concat([all_vols, pd.Series([custom_vol], dtype=float)])
+        all_rets = pd.concat([all_rets, pd.Series([custom_return], dtype=float)])
+
+    x_pad = max((float(all_vols.max()) - float(all_vols.min())) * 0.05, 1e-4)
+    y_pad = max((float(all_rets.max()) - float(all_rets.min())) * 0.05, 1e-4)
+
     # Set plot layout and styling
     fig.update_layout(
         width=1100,
         height=600,
         title='Efficient Frontier with Monte Carlo Portfolios, Optimal Portfolios, and Capital Market Line',
         title_font=dict(size=20),
-        xaxis=dict(title='Volatility (Risk)', range=[0.16, 0.30], title_font=dict(size=16), tickfont=dict(size=14)),
-        yaxis=dict(title='Expected Return', range=[0.08, 0.30], title_font=dict(size=16), tickfont=dict(size=14)),
+        xaxis=dict(title='Volatility (Risk)', range=[float(all_vols.min()) - x_pad, float(all_vols.max()) + x_pad], title_font=dict(size=16), tickfont=dict(size=14)),
+        yaxis=dict(title='Expected Return', range=[float(all_rets.min()) - y_pad, float(all_rets.max()) + y_pad], title_font=dict(size=16), tickfont=dict(size=14)),
         legend=dict(x=0.75, y=0.05, bgcolor='rgba(255,255,255,0.5)', font=dict(size=12)),
         plot_bgcolor='dark grey',
         hovermode='closest'
@@ -123,6 +152,9 @@ def plot_log_returns(log_returns: pd.DataFrame):
     """
     num_assets = len(log_returns.columns)
     fig, axes = plt.subplots(num_assets, 1, figsize=(12, 3 * num_assets), sharex=True)
+    # For exactly one ticker, plt.subplots returns a bare Axes object (not a
+    # list), which used to crash the app with TypeError on axes[i].
+    axes = np.atleast_1d(axes)
 
     for i, ticker in enumerate(log_returns.columns):
         axes[i].plot(log_returns.index, log_returns[ticker])
@@ -141,6 +173,9 @@ def plot_log_returns(log_returns: pd.DataFrame):
     except OSError:
         pass
     st.pyplot(fig)
+    # Free the figure immediately: without this, every rerun leaks another
+    # figure into matplotlib's global heap until memory bloats.
+    plt.close(fig)
 
 
 def plot_correlation_heatmap(corr_matrix, title='Correlation Matrix'):
@@ -169,6 +204,8 @@ def plot_correlation_heatmap(corr_matrix, title='Correlation Matrix'):
     except OSError:
         pass
     st.pyplot(fig)
+    # Free the figure immediately (see plot_log_returns).
+    plt.close(fig)
 
 def plot_sharpe_ratio_bar_chart(sharpe_series):
     fig = go.Figure(go.Bar(

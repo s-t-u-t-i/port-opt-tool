@@ -24,7 +24,7 @@ The idea was to make portfolio theory tangible - by showing how changes in asset
 
 ```bash 
 git clone https://github.com/s-t-u-t-i/port-opt-tool.git
-cd port_opt_tool
+cd port-opt-tool
 ```
 
 2. Create and activate a virtual environment(Optional but recommended)
@@ -123,8 +123,19 @@ After running, visit: http://localhost:8501
    - ![Metrics Comparison](output/metrics_comparison.gif)
 
 **Notes**:
- - The efficient frontier graph is zoomed in for better visibility of various portfolios.
+ - The efficient frontier chart auto-fits its axes to the data, so every portfolio (including your custom one) stays visible.
  - Custom portfolio must be generated after running the simulation.
+
+## Running the Tests
+
+The project ships with a pytest test suite (no network needed — unit tests run on synthetic data):
+
+```bash
+pip install -r requirements-dev.txt
+pytest tests/ -v
+```
+
+`BUG_REPORT.md` documents the audit that introduced the suite.
 
 ## Credits
 

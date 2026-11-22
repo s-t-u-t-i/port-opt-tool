@@ -28,10 +28,10 @@ def test_log_returns_drops_leading_nan_rows(five_asset_prices, isolated_fs):
     assert not got.isna().any().any()
 
 
-def test_log_returns_zero_price_inf_survives_dropna(isolated_fs):
-    """Documented bug: a zero price yields ±inf, and dropna() only removes
-    NaN — so ±inf rows flow into downstream covariance math, which turns
-    everything into NaN with no error anywhere (data_utils.py:66)."""
+def test_log_returns_zero_price_treated_as_missing(isolated_fs):
+    """Fixed (was H5): non-positive prices are treated as missing data, so no
+    ±inf is ever produced and the poisoned-row is dropped with a warning
+    instead of silently reaching the covariance matrix."""
     idx = pd.bdate_range("2022-01-03", periods=50)
     prices = pd.DataFrame(
         100 * np.exp(np.cumsum(np.random.default_rng(1).normal(0, 0.01, (50, 2)), axis=0)),
@@ -39,8 +39,12 @@ def test_log_returns_zero_price_inf_survives_dropna(isolated_fs):
         columns=["A", "B"],
     )
     prices.iloc[5] = 0.0  # one zero close
-    lr = data_utils.calculate_log_returns(prices)
-    assert np.isinf(lr.to_numpy()).any()  # inf silently survives the broom
+    with pytest.warns(UserWarning, match="Non-positive"):
+        lr = data_utils.calculate_log_returns(prices)
+    assert not np.isinf(lr.to_numpy()).any()          # no inf anywhere
+    # Two return-days vanish: the zero day itself, and the day after it
+    # (whose "previous price" is the zero). Both dropped as missing data.
+    assert len(lr) == 47
 
 
 # ---------------------------------------------------------------------------
@@ -103,12 +107,14 @@ def test_individual_sharpe_hand_computed(five_asset_log_returns, isolated_fs):
         )
 
 
-def test_individual_sharpe_zero_std_gives_inf(isolated_fs):
-    """Documented bug: a flat price column (std == 0) produces ±inf Sharpe
-    with no guard or error (data_utils.py:151)."""
+def test_individual_sharpe_zero_std_gives_nan(isolated_fs):
+    """Fixed (was L2): a flat price column (std == 0) now yields NaN Sharpe
+    with a warning instead of a meaningless ±inf."""
     lr = pd.DataFrame(
         {"FLAT": [0.0001] * 100, "OK": np.random.default_rng(3).normal(0.0005, 0.01, 100)}
     )
     summary = data_utils.calculate_descriptive_statistics(lr)
-    sharpe, _, _ = data_utils.calculate_individual_sharpe_ratios(summary, 0.05)
-    assert np.isinf(sharpe["FLAT"])
+    with pytest.warns(UserWarning, match="zero-volatility"):
+        sharpe, _, _ = data_utils.calculate_individual_sharpe_ratios(summary, 0.05)
+    assert np.isnan(sharpe["FLAT"])
+    assert np.isfinite(sharpe["OK"])

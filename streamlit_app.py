@@ -1,9 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from core.data_utils import fetch_and_save_data, load_close_prices_from_csv, calculate_log_returns, calculate_descriptive_statistics,compute_cov_corr_matrices, calculate_individual_sharpe_ratios
+from core.data_utils import fetch_and_save_data, calculate_log_returns, calculate_descriptive_statistics,compute_cov_corr_matrices, calculate_individual_sharpe_ratios
 from core.simulation import run_monte_carlo_simulation
-from core.mc_optimization import get_mc_optimal_portfolio
+from core.mc_optimization import get_mc_optimal_portfolio, align_weight_vector
 from core.true_optimization import portfolio_annual_perf, compute_all_true_portfolios
 from core.plotting import plot_log_returns, plot_correlation_heatmap, plot_efficient_frontier, plot_sharpe_ratio_bar_chart, plot_portfolio_weight_comparison, plot_metric_comparison
 import plotly.graph_objects as go
@@ -17,6 +17,17 @@ def get_stock_data(tickers, start_date, end_date):
 @st.cache_data(show_spinner=False)
 def get_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate):
     return compute_all_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
+
+# ----- Cached Pipeline (log returns / stats / matrices) -----
+# Every widget interaction re-runs this script. Without this cache, each
+# slider drag re-read the CSV and recomputed all statistics (~65 ms + disk
+# writes every time). With it, repeat runs with identical prices are instant.
+@st.cache_data(show_spinner=False)
+def get_pipeline_outputs(close_prices):
+    log_returns = calculate_log_returns(close_prices)
+    summary_df = calculate_descriptive_statistics(log_returns)
+    cov_matrix_daily, corr_matrix = compute_cov_corr_matrices(log_returns)
+    return log_returns, summary_df, cov_matrix_daily, corr_matrix
 
 st.set_page_config(page_title="Portfolio Optimization Tool", layout="wide")
 
@@ -85,8 +96,10 @@ if st.sidebar.button("🔄 Refresh Data"):
     st.rerun()
 
 # 🎛 Sidebar Inputs
-# Check if tickers have changed and clear simulation state if needed
-if "simulation_tickers" in st.session_state and st.session_state.get("tickers") != st.session_state.simulation_tickers:
+# Check if tickers have changed and clear simulation state if needed.
+# Compared as SETS: re-selecting the same tickers in a different order is not
+# a change (the old order-sensitive list comparison falsely reset the state).
+if "simulation_tickers" in st.session_state and set(st.session_state.get("tickers") or []) != set(st.session_state.simulation_tickers):
     # Clear simulation state when tickers change
     if "portfolios_df" in st.session_state:
         del st.session_state.portfolios_df
@@ -127,20 +140,60 @@ st.sidebar.number_input("Number of Portfolios", min_value=1000, max_value=50000,
 # ▶ Simulation Button
 simulate_button = st.sidebar.button("Run Simulation")
 
-tickers = st.session_state.tickers
+# Canonical order: always analyze in alphabetical ticker order, so
+# re-selecting the same tickers in a different order changes nothing at all
+# (no re-download, no false "changed" state) and every weight vector lines
+# up with the right ticker.
+tickers = sorted(st.session_state.tickers)
 start_date = st.session_state.start_date
 end_date = st.session_state.end_date
 risk_free_rate = st.session_state.risk_free_rate
 num_portfolios = st.session_state.num_portfolios
 
 
+# ----- Input Guards (fail loudly instead of computing on nothing) -----
+if not tickers:
+    st.warning("⚠ Select at least one ticker in the sidebar to continue.")
+    st.stop()
+if start_date >= end_date:
+    st.error("🚫 The start date must be before the end date.")
+    st.stop()
+
 # ----- Load & Process Data -----
-get_stock_data(tickers, start_date, end_date)
-close_prices = load_close_prices_from_csv('data/stock_data.csv')
-log_returns = calculate_log_returns(close_prices)
-summary_df = calculate_descriptive_statistics(log_returns)
-cov_matrix_daily, corr_matrix = compute_cov_corr_matrices(log_returns)
+raw_data = get_stock_data(tickers, start_date, end_date)
+if raw_data is None or len(raw_data) == 0:
+    st.error(
+        "🚫 No data was downloaded for the selected tickers and dates. "
+        "Check your internet connection, the ticker symbols, and the date range."
+    )
+    st.stop()
+
+# Use the cached download itself, NOT data/stock_data.csv from disk, so the
+# file on disk can never disagree with what this session requested.
+if isinstance(raw_data.columns, pd.MultiIndex):
+    close_prices = raw_data["Close"]
+else:
+    close_prices = raw_data
+
+log_returns, summary_df, cov_matrix_daily, corr_matrix = get_pipeline_outputs(close_prices)
 mean_returns_daily = log_returns.mean()
+
+# Surface data-quality issues instead of hiding them
+dropped_tickers = [t for t in tickers if t not in log_returns.columns]
+if dropped_tickers:
+    st.warning(
+        f"⚠ No usable price data for: {', '.join(dropped_tickers)} — they were "
+        f"excluded. The analysis uses: {', '.join(log_returns.columns)}."
+    )
+if log_returns.empty:
+    st.error("🚫 None of the selected tickers returned usable price data.")
+    st.stop()
+if len(log_returns) < len(close_prices) - 1:
+    st.warning(
+        f"⚠ The tickers' histories don't fully overlap: only {len(log_returns)} "
+        f"of {len(close_prices) - 1} possible trading days are used so that "
+        f"every ticker stays aligned."
+    )
 
 # ----- Exploratory Data Analysis ------
 st.header("Exploratory Data Analysis (EDA)")
@@ -180,7 +233,7 @@ if simulate_button:
     with st.spinner("Running Monte Carlo simulation..."):
         portfolios_df = run_monte_carlo_simulation(log_returns, num_portfolios, risk_free_rate)
         st.session_state.portfolios_df = portfolios_df
-        mc_ret, mc_vol, mc_sharpe, mc_weights = get_mc_optimal_portfolio(portfolios_df)
+        mc_ret, mc_vol, mc_sharpe, mc_weights = get_mc_optimal_portfolio(portfolios_df, weight_columns=tickers)
         st.session_state.mc_result = (mc_ret, mc_vol, mc_sharpe, mc_weights)
         # Store the tickers and params used for simulation
         st.session_state.simulation_tickers = tickers.copy()
@@ -206,7 +259,13 @@ else:
     # Required values for optimization
     st.subheader("Custom Portfolio")
 
-    results = get_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
+    try:
+        results = get_true_portfolios(mean_returns_daily, cov_matrix_daily, risk_free_rate)
+    except (RuntimeError, ValueError) as opt_error:
+        # Optimizer/covariance problems now raise clear errors upstream;
+        # show them instead of a raw traceback.
+        st.error(f"🚫 Optimizer error: {opt_error}")
+        st.stop()
 
     true_ret, true_vol, true_sharpe, true_weights = results["true"]
     min_ret, min_vol, min_sharpe, min_weights = results["min"]
@@ -248,14 +307,14 @@ if not st.session_state.get("simulated", False):
 elif not st.session_state.get("custom_generated", False):
     st.warning("⚠ Please generate the custom portfolio first.")
 else:
-        # Check if current tickers match simulation tickers
+        # Set-based check if current tickers match simulation tickers
         simulation_tickers = st.session_state.get("simulation_tickers", tickers)
-        if simulation_tickers != tickers:
+        if set(simulation_tickers) != set(tickers):
             st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
         else:
             # Get custom portfolio metrics from session state
             custom_ret, custom_vol, custom_sharpe, custom_weights = st.session_state.custom_result
-            
+
             fig = plot_efficient_frontier(
                 portfolios_df=st.session_state.portfolios_df,
                 frontier_vols=frontier_df["Volatility"],
@@ -269,10 +328,12 @@ else:
                 min_vol=min_vol,
                 min_return=min_ret,
                 min_sharpe=min_sharpe,
-                risk_free_rate=risk_free_rate
+                risk_free_rate=risk_free_rate,
+                custom_vol=custom_vol,
+                custom_return=custom_ret
             )
 
-            # Add custom porfolio to the figure 
+            # Add custom porfolio to the figure
             fig.add_trace(go.Scatter(
                 x=[custom_vol],
                 y=[custom_ret],
@@ -282,26 +343,35 @@ else:
                 showlegend=True
             ))
             st.plotly_chart(fig)
-            st.markdown("Note: Axes are zoomed in to improve frontier visibility.")
+            st.markdown("Note: Axes auto-fit to the data so every portfolio stays visible.")
 
 
 
 # ----- Weight Comparison Chart -----
 if not st.session_state.get("simulated", False):
     st.warning("⚠ Please run the simulation first to view portfolio weight comparison.")
-elif st.session_state.custom_generated:
+elif not st.session_state.custom_generated:
+    st.warning("⚠ Please generate the custom portfolio first.")
+else:
     custom_weights = st.session_state.custom_result[-1]
-    # Use the tickers that were used for simulation to ensure consistency
     simulation_tickers = st.session_state.get("simulation_tickers", tickers)
-    
-    # Check if current tickers match simulation tickers
-    if simulation_tickers != tickers:
+
+    # Set-based check: re-selecting the same tickers in a different order is
+    # NOT a change; only a genuinely different ticker set invalidates here.
+    if set(simulation_tickers) != set(tickers):
         st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
     else:
+        # Same ticker set, possibly in a different order: align the stored
+        # weight vectors to the current order so every bar is labeled right.
+        if simulation_tickers != tickers:
+            mc_weights = align_weight_vector(mc_weights, simulation_tickers, tickers)
+            true_weights = align_weight_vector(true_weights, simulation_tickers, tickers)
+            min_weights = align_weight_vector(min_weights, simulation_tickers, tickers)
+
         portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
         weights_data = pd.DataFrame(
             [mc_weights, true_weights, min_weights, custom_weights],
-            columns=simulation_tickers,
+            columns=tickers,
             index=portfolios
         )
 
@@ -327,9 +397,9 @@ if not st.session_state.get("simulated", False):
 elif not st.session_state.get("custom_generated", False):
     st.warning("⚠ Please generate the custom portfolio first to view performance metrics.")
 else:
-    # Check if current tickers match simulation tickers
+    # Set-based check if current tickers match simulation tickers
     simulation_tickers = st.session_state.get("simulation_tickers", tickers)
-    if simulation_tickers != tickers:
+    if set(simulation_tickers) != set(tickers):
         st.warning("⚠ The selected tickers have changed since the simulation was run. Please run the simulation again with the current ticker selection.")
     else:
         portfolios = ["MC Optimal", "True Optimal", "GMV", "Custom"]
